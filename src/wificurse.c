@@ -23,6 +23,7 @@
 #include <unistd.h>
 #include <poll.h>
 #include <signal.h>
+#include <sys/signalfd.h>
 #include <pthread.h>
 #include <time.h>
 #include <sys/time.h>
@@ -37,6 +38,11 @@
 
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof(arr[0]))
 
+struct ssid_list {
+	char ssid[ESSID_LEN + 1];
+	struct ssid_list *next;
+};
+
 struct deauth_thread_args {
 	struct ap_list *apl;
 	struct iw_dev *dev;
@@ -47,6 +53,7 @@ struct deauth_thread_args {
 	int chan_need_change;
 	volatile int chan_changed;
 	volatile int stop;
+	struct ssid_list *ssid_list;
 };
 
 int send_deauth(struct iw_dev *dev, struct access_point *ap) {
@@ -148,6 +155,20 @@ int read_ap_info(struct iw_dev *dev, struct ap_info *api) {
 	return ERRNODATA;
 }
 
+static int is_ssid_targeted(const char *ssid, struct ssid_list *list) {
+	if (list == NULL)
+		return 1;
+
+	struct ssid_list *cur = list;
+	while (cur != NULL) {
+		if (strcmp(ssid, cur->ssid) == 0)
+			return 1;
+		cur = cur->next;
+	}
+
+	return 0;
+}
+
 void *deauth_thread_func(void *arg) {
 	struct deauth_thread_args *ta = arg;
 	struct access_point *ap, *tmp;
@@ -177,12 +198,14 @@ void *deauth_thread_func(void *arg) {
 					pthread_mutex_unlock(ta->list_mutex);
 					/* if interface and AP are in the same channel, send deauth */
 					if (ap->info.chan == ta->dev->chan) {
-						if (send_deauth(ta->dev, ap) < 0) {
-							print_error();
-							ta->stop = 2; /* notify main thread that we got an error */
+						if (is_ssid_targeted((const char*)ap->info.essid, ta->ssid_list)) {
+							if (send_deauth(ta->dev, ap) < 0) {
+								print_error();
+								ta->stop = 2; /* notify main thread that we got an error */
+							}
+							b = 1;
+							ap->num_of_deauths++;
 						}
-						b = 1;
-						ap->num_of_deauths++;
 					}
 					ap = ap->next;
 				}
@@ -210,6 +233,7 @@ static void print_usage(FILE *f) {
 	fprintf(f, "  usage: wificurse [options] <interface>\n\n");
 	fprintf(f, "  Options:\n");
 	fprintf(f, "    -c channels      Channel list (e.g 1,4-6,11) (default: 1-14)\n");
+	fprintf(f, "    -s ssids         Comma-separated list of SSIDs to attack (e.g. \"test network\",linksys)\n");
 	fprintf(f, "    -l               Display all network interfaces and exit\n");
 	fprintf(f, "\n");
 }
@@ -312,6 +336,38 @@ static int print_interfaces() {
 	return 0;
 }
 
+static int parse_ssids_str(char *ssids_str, struct ssid_list **head) {
+	char *s, *str;
+	struct ssid_list *cur, *new_node;
+
+	if (ssids_str == NULL)
+		return 0;
+
+	str = strtok_r(ssids_str, ",", &s);
+	while (str != NULL) {
+		new_node = malloc(sizeof(*new_node));
+		if (new_node == NULL) {
+			err_msg("malloc");
+			return -1;
+		}
+		strncpy(new_node->ssid, str, ESSID_LEN);
+		new_node->ssid[ESSID_LEN] = '\0';
+		new_node->next = NULL;
+
+		if (*head == NULL) {
+			*head = new_node;
+		} else {
+			cur = *head;
+			while (cur->next != NULL)
+				cur = cur->next;
+			cur->next = new_node;
+		}
+		str = strtok_r(NULL, ",", &s);
+	}
+
+	return 0;
+}
+
 static int parse_chans_str(char *chans_str, channelset_t *chans) {
 	char *s, *str, *ptrs[256] = { NULL };
 	int i, j, n, chan1, chan2;
@@ -380,8 +436,9 @@ int main(int argc, char *argv[]) {
 	pthread_mutex_t chan_mutex, list_mutex, cnc_mutex;
 	pthread_cond_t chan_cond;
 	channelset_t chans;
+	struct ssid_list *ssid_list_head = NULL, *cur;
 	int ret, sigfd, c, n, chan;
-	char *ifname, *chans_str;
+	char *ifname, *chans_str, *ssids_str;
 	sigset_t exit_sig;
 	time_t tm;
 
@@ -393,8 +450,9 @@ int main(int argc, char *argv[]) {
 	/* arguments */
 	ifname = argv[argc-1];
 	chans_str = NULL;
+	ssids_str = NULL;
 
-	while((c = getopt(argc, argv, "c:lh")) != -1) {
+	while((c = getopt(argc, argv, "c:lhs:")) != -1) {
 		switch (c) {
 		case 'c':
 			chans_str = optarg;
@@ -404,6 +462,9 @@ int main(int argc, char *argv[]) {
 		case 'h':
 			print_usage(stdout);
 			return EXIT_SUCCESS;
+		case 's':
+			ssids_str = optarg;
+			break;
 		case '?':
 		default:
 			return EXIT_FAILURE;
@@ -418,6 +479,14 @@ int main(int argc, char *argv[]) {
 	if (getuid()) {
 		fprintf(stderr, "Not root?\n");
 		return EXIT_FAILURE;
+	}
+
+	/* init ssid list */
+	if (ssids_str != NULL) {
+		if (parse_ssids_str(ssids_str, &ssid_list_head) < 0) {
+			fprintf(stderr, "Can not parse the ssids\n");
+			return EXIT_FAILURE;
+		}
 	}
 
 	/* init channel set */
@@ -498,6 +567,7 @@ int main(int argc, char *argv[]) {
 	pthread_mutex_init(&cnc_mutex, NULL);
 	ta.cnc_mutex = &cnc_mutex;
 	ta.chan_need_change = 0;
+	ta.ssid_list = ssid_list_head;
 
 	if (pthread_create(&deauth_thread, NULL, deauth_thread_func, &ta) < 0) {
 		err_msg("pthread_create");
@@ -593,6 +663,11 @@ int main(int argc, char *argv[]) {
 	pthread_join(deauth_thread, NULL);
 	iw_close(&dev);
 	free_ap_list(&apl);
+	while (ssid_list_head != NULL) {
+		cur = ssid_list_head;
+		ssid_list_head = ssid_list_head->next;
+		free(cur);
+	}
 	return EXIT_SUCCESS;
 _errout:
 	ta.stop = 1;
@@ -603,5 +678,10 @@ _errout:
 _errout_no_thread:
 	iw_close(&dev);
 	free_ap_list(&apl);
+	while (ssid_list_head != NULL) {
+		cur = ssid_list_head;
+		ssid_list_head = ssid_list_head->next;
+		free(cur);
+	}
 	return EXIT_FAILURE;
 }
