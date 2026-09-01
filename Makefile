@@ -2,6 +2,8 @@ PREFIX ?= /usr/local
 CC = $(CROSS_COMPILE)gcc
 CFLAGS ?= -O2
 
+NDK ?= /opt/android-ndk
+
 SRCS = $(wildcard src/*.c)
 HDRS = $(wildcard src/*.h)
 
@@ -28,6 +30,14 @@ wificurse: $(OBJS)
 install: all
 	@mkdir -p $(INSTALLDIR)/bin
 	cp wificurse $(INSTALLDIR)/bin/wificurse
+
+.PHONY: android android-clean
+
+android:
+	$(NDK)/ndk-build -j$(shell nproc) NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=jni/Android.mk NDK_APPLICATION_MK=jni/Application.mk
+
+android-clean:
+	$(NDK)/ndk-build NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=jni/Android.mk NDK_APPLICATION_MK=jni/Application.mk clean
 
 clean:
 	@rm -f src/*~ src/\#*\# src/*.o *~ \#*\# wificurse

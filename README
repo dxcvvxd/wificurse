@@ -23,3 +23,34 @@ install:
 
 ARM cross-compile:
     make CROSS_COMPILE=arm-none-linux-gnueabi-
+
+
+Android (NDK cross-compile)
+---------------------------
+Builds native ARM executables for Android. This program needs root,
+monitor-mode capable WiFi chipset, and raw packet (AF_PACKET) access, all
+of which are uncommon on stock Android hardware. Root your device and
+check that your WiFi driver supports monitor mode + injection.
+
+Prerequisites: Android NDK r29 (installed at /opt/android-ndk here, via
+`yay -S android-ndk`).
+
+Build (both arm64-v8a and armeabi-v7a):
+    make android            # uses $(NDK), default /opt/android-ndk
+
+or directly:
+    /opt/android-ndk/ndk-build -j$(nproc) \
+        NDK_PROJECT_PATH=. \
+        APP_BUILD_SCRIPT=jni/Android.mk \
+        NDK_APPLICATION_MK=jni/Application.mk
+
+Clean: make android-clean
+
+Output executables (Android PIE, API 21):
+    libs/arm64-v8a/wificurse
+    libs/armeabi-v7a/wificurse
+
+Deploy: push to device, chmod +x, run as root:
+    adb push libs/arm64-v8a/wificurse /data/local/tmp/wificurse
+    adb shell su -c "chmod 755 /data/local/tmp/wificurse"
+    adb shell su -c "/data/local/tmp/wificurse wlan0"

@@ -5,3 +5,5 @@
 !.gitignore
 /TAGS
 /wificurse
+/libs/
+/obj/
