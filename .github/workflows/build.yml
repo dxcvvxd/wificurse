@@ -1,0 +1,39 @@
+name: build
+
+on:
+  push:
+    branches: [master, android]
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: make
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wificurse-linux
+          path: wificurse
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup NDK
+        run: |
+          wget -q https://dl.google.com/android/repository/android-ndk-r29-linux.zip
+          unzip -q android-ndk-r29-linux.zip
+      - name: Build
+        run: |
+          ls -d android-ndk-r29
+          make android NDK=$PWD/android-ndk-r29
+      - name: Check binaries
+        run: file libs/*/wificurse
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wificurse-android
+          path: libs/
