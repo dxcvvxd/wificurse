@@ -405,7 +405,7 @@ static int parse_chans_str(char *chans_str, channelset_t *chans) {
 		if (chan1 == 0)
 			return -1;
 
-		if (s[0] == '\0')
+		if (s == NULL || s[0] == '\0')
 			chan2 = chan1;
 		else
 			chan2 = atoi(s);
