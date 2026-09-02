@@ -447,31 +447,57 @@ int main(int argc, char *argv[]) {
 		return EXIT_FAILURE;
 	}
 
-	/* arguments */
-	ifname = argv[argc-1];
+	/* arguments (any order: options and interface may be mixed) */
+	ifname = NULL;
 	chans_str = NULL;
 	ssids_str = NULL;
 
-	while((c = getopt(argc, argv, "c:lhs:")) != -1) {
-		switch (c) {
-		case 'c':
-			chans_str = optarg;
-			break;
-		case 'l':
-			return print_interfaces();
-		case 'h':
-			print_usage(stdout);
-			return EXIT_SUCCESS;
-		case 's':
-			ssids_str = optarg;
-			break;
-		case '?':
-		default:
-			return EXIT_FAILURE;
+	for (c = 1; c < argc; c++) {
+		if (argv[c][0] == '-' && argv[c][1] != '\0') {
+			if (strcmp(argv[c], "--") == 0) {
+				for (c++; c < argc; c++) {
+					if (ifname != NULL) {
+						print_usage(stderr);
+						return EXIT_FAILURE;
+					}
+					ifname = argv[c];
+				}
+				break;
+			}
+			switch (argv[c][1]) {
+			case 'c':
+				if (++c >= argc) {
+					print_usage(stderr);
+					return EXIT_FAILURE;
+				}
+				chans_str = argv[c];
+				break;
+			case 's':
+				if (++c >= argc) {
+					print_usage(stderr);
+					return EXIT_FAILURE;
+				}
+				ssids_str = argv[c];
+				break;
+			case 'l':
+				return print_interfaces();
+			case 'h':
+				print_usage(stdout);
+				return EXIT_SUCCESS;
+			default:
+				print_usage(stderr);
+				return EXIT_FAILURE;
+			}
+		} else {
+			if (ifname != NULL) {
+				print_usage(stderr);
+				return EXIT_FAILURE;
+			}
+			ifname = argv[c];
 		}
 	}
 
-	if (argv[optind] != ifname) {
+	if (ifname == NULL) {
 		print_usage(stderr);
 		return EXIT_FAILURE;
 	}

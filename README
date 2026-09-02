@@ -7,8 +7,9 @@ is essencially a WiFi DoS attack tool created for educational
 purposes only. It works only in Linux and requires wireless card
 drivers capable of injecting packets in wireless networks.
 
-How to use it: Just run it as root and put as first argument the
-card interface. It will automatically put your interface in monitor
+How to use it: Just run it as root, passing the interface and any options
+in any order (options and the interface may be mixed). It will
+automatically put your interface in monitor
 mode and it will listen at channel range 1-14. If there is no AP in the
 channel, it will change channel every 1 second, or else it will start
 the attack which it takes approximately 30 seconds. After that it will
