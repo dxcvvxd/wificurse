@@ -21,6 +21,7 @@
 
 #include <stdint.h>
 #include <sys/socket.h>
+#include <linux/if.h>
 #include <linux/wireless.h>
 
 
@@ -48,8 +49,10 @@ struct iw_dev {
 	int fd_in;
 	int fd_out;
 	volatile int chan;
+	int nlk_fd;
+	int nlk_family;
+	int old_iftype;
 	struct ifreq old_flags;
-	struct iwreq old_mode;
 };
 
 

@@ -54,3 +54,25 @@ Deploy: push to device, chmod +x, run as root:
     adb push libs/arm64-v8a/wificurse /data/local/tmp/wificurse
     adb shell su -c "chmod 755 /data/local/tmp/wificurse"
     adb shell su -c "/data/local/tmp/wificurse wlan0"
+
+Device notes
+------------
+iw.c talks cfg80211/nl80211 over raw netlink (no libnl needed, the NDK
+does not ship it), so it works on modern drivers that dropped the legacy
+WEXT ioctls (SIOCSIWMODE/SIOCSIWFREQ).
+
+On Qualcomm qcacld devices (e.g. Redmi Note 12 "topaz"/bengal) the driver must be
+put into monitor mode via con_mode before the
+program runs, otherwise SET_INTERFACE(monitor) and raw packet access will
+not work. From a root adb shell (recipe from kimocoder/qualcomm_android_monitor_mode):
+
+    ip link set wlan0 down
+    echo 4 > /sys/module/wlan/parameters/con_mode
+    ip link set wlan0 up
+
+Then run wificurse. To restore normal WiFi afterwards:
+
+    ip link set wlan0 down
+    echo 0 > /sys/module/wlan/parameters/con_mode
+    ip link set wlan0 up
+    svc wifi enable   # framework may force-restart anyway
