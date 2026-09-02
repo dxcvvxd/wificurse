@@ -21,6 +21,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <errno.h>
+#include <stdio.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 #include <net/ethernet.h>
@@ -321,6 +322,11 @@ int iw_open(struct iw_dev *dev) {
 		ret = nl_send_cmd(dev, NL80211_CMD_SET_INTERFACE, 0,
 				  set_ifindex_iftype_cb, arg, -1, NULL, NULL);
 		if (ret < 0) {
+			if (ret == -EOPNOTSUPP)
+				fputs("hint: monitor not supported - this Android driver needs "
+				      "con_mode=4 (ip link set down; echo 4 > "
+				      "/sys/module/wlan/parameters/con_mode; ip link set up)\n",
+				      stderr);
 			errno = -ret;
 			return_error("nl80211: SET_INTERFACE(monitor)");
 		}
@@ -462,6 +468,10 @@ int iw_set_channel(struct iw_dev *dev, int chan) {
 	ret = nl_send_cmd(dev, NL80211_CMD_SET_CHANNEL, 0,
 			  set_ifindex_freq_cb, dev, -1, NULL, NULL);
 	if (ret < 0) {
+		if (ret == -EBUSY)
+			fputs("hint: channel is busy - disable wifi (svc wifi disable), "
+			      "then set con_mode=4 with the interface down, "
+			      "bringing it up before running wificurse\n", stderr);
 		errno = -ret;
 		return_error("nl80211: SET_CHANNEL");
 	}
